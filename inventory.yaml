@@ -1,0 +1,9 @@
+---
+all:
+  hosts:
+    undercloud:
+      ansible_host: localhost
+      ansible_connection: local
+    overcloud:
+      ansible_host: localhost
+      ansible_connection: local
