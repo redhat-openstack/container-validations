@@ -1,20 +1,20 @@
 #!/bin/sh
 REPO=${VALIDATION_REPOSITORY:="https://github.com/openstack/tripleo-validations.git"}
+BRANCH=${REPO_BRANCH:='master'}
 INV=${INVENTORY:="/home/validation/inventory.yaml"}
-V_LIST=${VALIDATION_LIST:="dns no-op"}
+VALS=${VALIDATIONS:="dns,no-op"}
 
 val_dir=$(basename "${REPO}" .git)
 echo -n "Cloning repository ${REPO}"
-git clone -q "${REPO}"
+git clone -q -b "${BRANCH}" "${REPO}"
 echo " ... DONE"
 
-if [ -z "${V_LIST}" ]; then
+if [ -z "${VALS}" ]; then
   echo "No validation passed, nothing to do"
 else
 
   cd "${val_dir}"
   VALIDATIONS_BASEDIR="$(pwd)"
-	echo $VALIDATIONS_BASEDIR
 	export ANSIBLE_RETRY_FILES_ENABLED=false
 	export ANSIBLE_KEEP_REMOTE_FILES=1
 
@@ -23,7 +23,10 @@ else
 	export ANSIBLE_LOOKUP_PLUGINS="${VALIDATIONS_BASEDIR}/lookup_plugins"
 	export ANSIBLE_LIBRARY="${VALIDATIONS_BASEDIR}/library"
 
-  for i in ${V_LIST}; do
-    ansible-playbook -i ${INV} playbooks/${i}.yaml
-  done
+  while IFS=',' read -ra LIST; do
+    for i in "${LIST[@]}"; do
+      echo "Running ${i}"
+      ansible-playbook -i ${INV} playbooks/${i}.yaml
+    done
+  done <<< "$VALS"
 fi

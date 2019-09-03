@@ -1,0 +1,16 @@
+
+FROM fedora:30
+
+# Install some packages
+RUN yum install -y git ansible sudo whois
+RUN yum clean all
+
+COPY init.sh /init.sh
+RUN chmod 0755 /init.sh
+
+# Create validation user
+RUN useradd -c "Validation user" -m -s /bin/sh -u 1000 my-user
+USER my-user
+COPY inventory.yaml /home/my-user/inventory.yaml
+WORKDIR /home/my-user
+CMD ["/init.sh"]
