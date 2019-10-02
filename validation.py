@@ -1,11 +1,15 @@
 #!/usr/bin/env python
 
 import argparse
-import ConfigParser
 import os
 import pwd
 import subprocess
 import sys
+
+try:
+    from configparser import ConfigParser
+except ImportError:
+    from ConfigParser import SafeConfigParser as ConfigParser
 
 CONTAINERFILE_TMPL = '''
 FROM %(image)s
@@ -50,7 +54,7 @@ class RunValidations:
             print('Generating config file')
             if not os.path.isdir(os.path.dirname(self.__conf_file)):
                 os.makedirs(os.path.dirname(self.__conf_file))
-            config = ConfigParser.ConfigParser()
+            config = ConfigParser()
             config.add_section('Validations')
             config.set('Validations', 'user', self.__args.user)
             config.set('Validations', 'uid', self.__args.uid)
@@ -67,9 +71,12 @@ class RunValidations:
             with open(self.__conf_file, 'w+') as cfg_file:
                 config.write(cfg_file)
 
-        config = ConfigParser.SafeConfigParser(allow_no_value=True)
+        config = ConfigParser(allow_no_value=True)
         with open(self.__conf_file, 'r') as cfg_file:
-            config.readfp(cfg_file)
+            try:
+                config.read_file(cfg_file)
+            except AttributeErrror:
+                config.readfp(cfg_file)
         self.__params['user'] = config.get('Validations', 'user')
         self.__params['uid'] = config.getint('Validations', 'uid')
         self.__params['image'] = config.get('Validations', 'image')
