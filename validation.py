@@ -75,7 +75,7 @@ class RunValidations:
         with open(self.__conf_file, 'r') as cfg_file:
             try:
                 config.read_file(cfg_file)
-            except AttributeErrror:
+            except AttributeError:
                 config.readfp(cfg_file)
         self.__params['user'] = config.get('Validations', 'user')
         self.__params['uid'] = config.getint('Validations', 'uid')
