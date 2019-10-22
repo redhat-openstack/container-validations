@@ -57,10 +57,10 @@ class RunValidations:
             config = ConfigParser()
             config.add_section('Validations')
             config.set('Validations', 'user', self.__args.user)
-            config.set('Validations', 'uid', self.__args.uid)
+            config.set('Validations', 'uid', str(self.__args.uid))
             config.set('Validations', 'image', self.__args.image)
             config.set('Validations', 'extra_pkgs', self.__args.extra_pkgs)
-            config.set('Validations', 'debug', self.__args.debug)
+            config.set('Validations', 'debug', str(self.__args.debug))
             config.set('Validations', 'validations',
                        ','.join(self.__args.validation))
             config.set('Validations', 'repository', self.__args.repository)
