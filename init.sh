@@ -2,15 +2,16 @@
 REPO=${VALIDATION_REPOSITORY:="https://github.com/openstack/tripleo-validations.git"}
 BRANCH=${REPO_BRANCH:='master'}
 INV=${INVENTORY:="/home/validation/inventory.yaml"}
-VALS=${VALIDATIONS:="dns,no-op"}
+VALS=${VALIDATIONS:="inventory-ping"}
 
 val_dir=$(basename "${REPO}" .git)
 echo -n "Cloning repository ${REPO}"
 git clone -q -b "${BRANCH}" "${REPO}"
 echo " ... DONE"
 
-if [ -z "${VALS}" ]; then
-  echo "No validation passed, nothing to do"
+if [ "${VALS}" == "inventory-ping" ]; then
+  echo "Running ping test on inventory"
+  ansible all -i inventory.yaml -m ping
 else
 
   cd "${val_dir}"

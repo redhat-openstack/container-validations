@@ -21,13 +21,28 @@ RUN yum clean all
 COPY init.sh /init.sh
 RUN chmod 0755 /init.sh
 
+ENV ANSIBLE_HOST_KEY_CHECKING false
+ENV ANSIBLE_REMOTE_USER %(user)s
+ENV ANSIBLE_PRIVATE_KEY_FILE %(keyfile)s
+
 # Create validation user
 RUN useradd -c "Validation user" -m -s /bin/sh -u %(uid)s %(user)s
+RUN echo "%(user)s ALL=(root) NOPASSWD:ALL" | sudo tee -a /etc/sudoers.d/%(user)s
+RUN chmod 0440 /etc/sudoers.d/%(user)s
+
+# Create .ssh directory to mount host key into
+RUN mkdir /home/%(user)s/.ssh
+RUN chown -R %(user)s:%(user)s /home/%(user)s/.ssh
+RUN chmod 700 /home/%(user)s/.ssh
+
 USER %(user)s
+
 COPY inventory.yaml /home/%(user)s/inventory.yaml
+
 WORKDIR /home/%(user)s
+
 CMD ["/init.sh"]
-'''
+'''  # noqa: E501
 
 
 class RunValidations:
@@ -58,11 +73,11 @@ class RunValidations:
             config.add_section('Validations')
             config.set('Validations', 'user', self.__args.user)
             config.set('Validations', 'uid', str(self.__args.uid))
+            config.set('Validations', 'keyfile', self.__args.keyfile)
             config.set('Validations', 'image', self.__args.image)
             config.set('Validations', 'extra_pkgs', self.__args.extra_pkgs)
             config.set('Validations', 'debug', str(self.__args.debug))
-            config.set('Validations', 'validations',
-                       ','.join(self.__args.validation))
+            config.set('Validations', 'validations', self.__args.validations)
             config.set('Validations', 'repository', self.__args.repository)
             config.set('Validations', 'branch', self.__args.branch)
             config.set('Validations', 'container', self.__args.container)
@@ -79,6 +94,7 @@ class RunValidations:
                 config.readfp(cfg_file)
         self.__params['user'] = config.get('Validations', 'user')
         self.__params['uid'] = config.getint('Validations', 'uid')
+        self.__params['keyfile'] = config.get('Validations', 'keyfile')
         self.__params['image'] = config.get('Validations', 'image')
         self.__params['debug'] = config.getboolean('Validations', 'debug')
         self.__params['validations'] = config.get('Validations', 'validations')
@@ -136,6 +152,9 @@ class RunValidations:
                 self.__print(volume)
                 cmd.extend(['-v', volume])
 
+        cmd.append('-v%s:%s:ro' % (self.__params['keyfile'],
+                                   self.__params['keyfile']))
+
         cmd.append('--env=VALIDATION_REPOSITORY=%s' %
                    self.__params['repository'])
         cmd.append('--env=INVENTORY=%s' % self.__params['inventory'])
@@ -161,8 +180,10 @@ class RunValidations:
 
 if __name__ == "__main__":
 
-    default_user = pwd.getpwuid(os.getuid()).pw_name
-    default_uid = os.getuid()
+    user_entry = pwd.getpwuid(int(os.environ.get('SUDO_UID', os.getuid())))
+    default_user = user_entry.pw_name
+    default_uid = user_entry.pw_uid
+    default_keyfile = os.path.join('/home', default_user, '.ssh/id_rsa')
     default_repo = 'https://opendev.org/openstack/tripleo-validations'
     default_branch = 'master'
     default_inventory = os.path.join('/home', default_user, 'inventory.yaml')
@@ -183,6 +204,9 @@ if __name__ == "__main__":
     parser.add_argument('--uid', '-U', type=int, default=default_uid,
                         help=('User UID in container. '
                               'Defaults to %s' % default_uid))
+    parser.add_argument('--keyfile', '-K', type=str, default=default_keyfile,
+                        help=('Keyfile path to bind-mount in container. '
+                              'Defaults to %s' % default_keyfile))
     parser.add_argument('--build', '-B', action='store_true',
                         help='Build container even if it exists. '
                              'Defaults to False')
@@ -194,10 +218,9 @@ if __name__ == "__main__":
                         help=('Extra packages to install in the container. '
                               'Comma or space separated list. '
                               'Defaults to empty string.'))
-    parser.add_argument('--validation', '-V', type=str, default=[],
-                        action='append',
-                        help=('Validation to run. Can be provided multiple '
-                              'times. Defaults to [].'))
+    parser.add_argument('--validations', '-V', type=str, default='',
+                        help=('Validations to run. Defaults to an empty string'
+                              ' in which case a ping test will be run.'))
     parser.add_argument('--repository', '-r', type=str, default=default_repo,
                         help=('Remote repository to clone validations role '
                               'from. Defaults to %s' % default_repo))
