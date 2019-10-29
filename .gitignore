@@ -1,3 +1,5 @@
 .config
 Containerfile
 .tox
+__pycache__
+*.pyc
