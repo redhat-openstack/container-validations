@@ -64,34 +64,46 @@ class RunValidations:
         if bool(self.__params['debug']):
             print(string)
 
-    def __setup(self):
-        if not os.path.exists(self.__conf_file) or self.__args.regenerate:
-            print('Generating config file')
-            if not os.path.isdir(os.path.dirname(self.__conf_file)):
-                os.makedirs(os.path.dirname(self.__conf_file))
-            config = ConfigParser()
-            config.add_section('Validations')
-            config.set('Validations', 'user', self.__args.user)
-            config.set('Validations', 'uid', str(self.__args.uid))
-            config.set('Validations', 'keyfile', self.__args.keyfile)
-            config.set('Validations', 'image', self.__args.image)
-            config.set('Validations', 'extra_pkgs', self.__args.extra_pkgs)
-            config.set('Validations', 'debug', str(self.__args.debug))
-            config.set('Validations', 'validations', self.__args.validations)
-            config.set('Validations', 'repository', self.__args.repository)
-            config.set('Validations', 'branch', self.__args.branch)
-            config.set('Validations', 'container', self.__args.container)
-            config.set('Validations', 'inventory', self.__args.inventory)
-            config.set('Validations', 'volumes', ','.join(self.__args.volumes))
-            with open(self.__conf_file, 'w+') as cfg_file:
-                config.write(cfg_file)
+    def __create_config_file(self, config):
+        abs_path = os.path.abspath(self.__args.create_config)
+        if not os.path.isdir(os.path.dirname(abs_path)):
+            os.makedirs(os.path.dirname(abs_path))
+        with open(abs_path, 'w+') as cfg_file:
+            config.write(cfg_file)
 
+    def __get_config_from_file(self, path):
+        abs_path = os.path.abspath(path)
         config = ConfigParser(allow_no_value=True)
-        with open(self.__conf_file, 'r') as cfg_file:
+        with open(abs_path, 'r') as cfg_file:
             try:
                 config.read_file(cfg_file)
             except AttributeError:
                 config.readfp(cfg_file)
+        return config
+
+    def __setup(self):
+        config = ConfigParser()
+        config.add_section('Validations')
+        config.set('Validations', 'user', self.__args.user)
+        config.set('Validations', 'uid', str(self.__args.uid))
+        config.set('Validations', 'keyfile', self.__args.keyfile)
+        config.set('Validations', 'image', self.__args.image)
+        config.set('Validations', 'extra_pkgs', self.__args.extra_pkgs)
+        config.set('Validations', 'debug', str(self.__args.debug))
+        config.set('Validations', 'validations', self.__args.validations)
+        config.set('Validations', 'repository', self.__args.repository)
+        config.set('Validations', 'branch', self.__args.branch)
+        config.set('Validations', 'container', self.__args.container)
+        config.set('Validations', 'inventory', self.__args.inventory)
+        config.set('Validations', 'volumes', ','.join(self.__args.volumes))
+
+        if self.__args.create_config:
+            print('Generating config file')
+            self.__create_config_file(config)
+
+        if self.__args.config:
+            config = self.__get_config_from_file(self.__args.config)
+
         self.__params['user'] = config.get('Validations', 'user')
         self.__params['uid'] = config.getint('Validations', 'uid')
         self.__params['keyfile'] = config.get('Validations', 'keyfile')
@@ -198,6 +210,7 @@ if __name__ == "__main__":
                     '--regenerate --run --debug '
                     '-v /tmp/foo:/tmp/bar:z')
             )
+    parser.add_argument('--config', '-C', type=str, help='Use config file')
     parser.add_argument('--user', '-u', type=str, default=default_user,
                         help=('Set user in container. '
                               'Defaults to %s' % default_user))
@@ -227,8 +240,8 @@ if __name__ == "__main__":
     parser.add_argument('--branch', '-b', type=str, default=default_branch,
                         help=('Remote repository branch to clone validations '
                               'from. Defaults to %s' % default_branch))
-    parser.add_argument('--regenerate', action='store_true',
-                        help='Re-generate the configuration file')
+    parser.add_argument('--create-config', type=str,
+                        help='Create the configuration file.')
     parser.add_argument('--container', '-c', type=str, default='podman',
                         choices=['docker', 'podman'],
                         help='Container engine. Defaults to podman.')
