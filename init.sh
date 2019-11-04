@@ -4,10 +4,14 @@ BRANCH=${REPO_BRANCH:='master'}
 INV=${INVENTORY:="/home/validation/inventory.yaml"}
 VALS=${VALIDATIONS:="inventory-ping"}
 
-val_dir=$(basename "${REPO}" .git)
-echo -n "Cloning repository ${REPO}"
-git clone -q -b "${BRANCH}" "${REPO}"
+if [ -d "${DEFAULT_REPO_LOCATION}/.git" ]; then
+    val_dir=$(basename "${DEFAULT_REPO_LOCATION}" .git)
+else
+    val_dir=$(basename "${REPO}" .git)
+    echo -n "Cloning repository ${REPO}"
+    git clone -q -b "${BRANCH}" "${REPO}"
 echo " ... DONE"
+fi
 
 if [ "${VALS}" == "inventory-ping" ]; then
   echo "Running ping test on inventory"

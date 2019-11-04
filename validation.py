@@ -24,6 +24,7 @@ RUN chmod 0755 /init.sh
 ENV ANSIBLE_HOST_KEY_CHECKING false
 ENV ANSIBLE_REMOTE_USER %(user)s
 ENV ANSIBLE_PRIVATE_KEY_FILE %(keyfile)s
+ENV DEFAULT_REPO_LOCATION /home/%(user)s/validation-repository
 
 # Create validation user
 RUN useradd -c "Validation user" -m -s /bin/sh -u %(uid)s %(user)s
@@ -65,7 +66,7 @@ class RunValidations:
             print(string)
 
     def __create_config_file(self, config):
-        abs_path = os.path.abspath(self.__args.create_config)
+        abs_path = os.path.abspath(self.__args['create_config'])
         if not os.path.isdir(os.path.dirname(abs_path)):
             os.makedirs(os.path.dirname(abs_path))
         with open(abs_path, 'w+') as cfg_file:
@@ -84,25 +85,25 @@ class RunValidations:
     def __setup(self):
         config = ConfigParser()
         config.add_section('Validations')
-        config.set('Validations', 'user', self.__args.user)
-        config.set('Validations', 'uid', str(self.__args.uid))
-        config.set('Validations', 'keyfile', self.__args.keyfile)
-        config.set('Validations', 'image', self.__args.image)
-        config.set('Validations', 'extra_pkgs', self.__args.extra_pkgs)
-        config.set('Validations', 'debug', str(self.__args.debug))
-        config.set('Validations', 'validations', self.__args.validations)
-        config.set('Validations', 'repository', self.__args.repository)
-        config.set('Validations', 'branch', self.__args.branch)
-        config.set('Validations', 'container', self.__args.container)
-        config.set('Validations', 'inventory', self.__args.inventory)
-        config.set('Validations', 'volumes', ','.join(self.__args.volumes))
+        config.set('Validations', 'user', self.__args['user'])
+        config.set('Validations', 'uid', str(self.__args['uid']))
+        config.set('Validations', 'keyfile', self.__args['keyfile'])
+        config.set('Validations', 'image', self.__args['image'])
+        config.set('Validations', 'extra_pkgs', self.__args['extra_pkgs'])
+        config.set('Validations', 'debug', str(self.__args['debug']))
+        config.set('Validations', 'validations', self.__args['validations'])
+        config.set('Validations', 'repository', self.__args['repository'])
+        config.set('Validations', 'branch', self.__args['branch'])
+        config.set('Validations', 'container', self.__args['container'])
+        config.set('Validations', 'inventory', self.__args['inventory'])
+        config.set('Validations', 'volumes', ','.join(self.__args['volumes']))
 
-        if self.__args.create_config:
+        if self.__args.get('create_config'):
             print('Generating config file')
             self.__create_config_file(config)
 
-        if self.__args.config:
-            config = self.__get_config_from_file(self.__args.config)
+        if self.__args.get('config'):
+            config = self.__get_config_from_file(self.__args['config'])
 
         self.__params['user'] = config.get('Validations', 'user')
         self.__params['uid'] = config.getint('Validations', 'uid')
@@ -114,8 +115,8 @@ class RunValidations:
         self.__params['branch'] = config.get('Validations', 'branch')
         self.__params['container'] = config.get('Validations', 'container')
         self.__params['inventory'] = config.get('Validations', 'inventory')
-        self.__params['build'] = self.__args.build
-        self.__params['run'] = self.__args.run
+        self.__params['build'] = self.__args['build']
+        self.__params['run'] = self.__args['run']
 
         validations = config.get('Validations', 'volumes').split(',')
         self.__params['volumes'] = validations
@@ -158,19 +159,30 @@ class RunValidations:
                 'run', '--rm',
                 ]
 
+        # Volumes
         if len(self.__params['volumes']) > 1:
             self.__print('Adding volumes:')
             for volume in self.__params['volumes']:
                 self.__print(volume)
                 cmd.extend(['-v', volume])
 
+        # Keyfile
         cmd.append('-v%s:%s:ro' % (self.__params['keyfile'],
                                    self.__params['keyfile']))
 
-        cmd.append('--env=VALIDATION_REPOSITORY=%s' %
-                   self.__params['repository'])
-        cmd.append('--env=INVENTORY=%s' % self.__params['inventory'])
+        # Repository
+        if os.path.isdir(os.path.abspath(self.__params.get('repository'))):
+            cmd.append('-v%s:/home/%s/validation-repository:z' %
+                       (self.__params['repository'], self.__params['user']))
+        else:
+            cmd.append('--env=VALIDATION_REPOSITORY=%s' %
+                       self.__params['repository'])
         cmd.append('--env=REPO_BRANCH=%s' % self.__params['branch'])
+
+        # Inventory
+        cmd.append('--env=INVENTORY=%s' % self.__params['inventory'])
+
+        # Validation playbooks
         if self.__params['validations'] != '':
             cmd.append('--env=VALIDATIONS=%s' % self.__params['validations'])
 
@@ -261,4 +273,4 @@ if __name__ == "__main__":
 
     args = parser.parse_args()
 
-    val = RunValidations(args)
+    val = RunValidations(vars(args))
