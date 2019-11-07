@@ -219,7 +219,7 @@ if __name__ == "__main__":
                          'CURRENT_DIR/.config/run_validations.conf. '
                          'The configuration file has priority.'),
             epilog=('Example: ./validation.py --extra-pkgs whois '
-                    '--regenerate --run --debug '
+                    '--run --debug '
                     '-v /tmp/foo:/tmp/bar:z')
             )
     parser.add_argument('--config', '-C', type=str, help='Use config file')
