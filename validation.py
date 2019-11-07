@@ -167,7 +167,7 @@ class RunValidations:
                 cmd.extend(['-v', volume])
 
         # Keyfile
-        cmd.append('-v%s:%s:ro' % (self.__params['keyfile'],
+        cmd.append('-v%s:%s:z' % (self.__params['keyfile'],
                                    self.__params['keyfile']))
 
         # Repository
