@@ -33,6 +33,13 @@ COPY inventory.yaml /root/inventory.yaml
 CMD ["/init.sh"]
 '''  # noqa: E501
 
+CONTAINER_ACTIONS = [
+    'run',
+    'list_validations',
+    'run_validations_group',
+    'inventory_ping',
+]
+
 
 class RunValidations:
     def __init__(self, args):
@@ -45,8 +52,11 @@ class RunValidations:
         self.__setup()
         if self.__params['build']:
             self.build()
-        if self.__params['run']:
-            self.run()
+        for action in CONTAINER_ACTIONS:
+            if self.__params.get(action):
+                self.__params['action'] = action
+                self.start()
+                break
         pass
 
     def __print(self, string, debug=True):
@@ -105,6 +115,8 @@ class RunValidations:
         self.__params['inventory'] = config.get('Validations', 'inventory')
         self.__params['build'] = self.__args['build']
         self.__params['run'] = self.__args['run']
+        self.__params['list'] = self.__args['list']
+        self.__params['inventory_ping'] = self.__args['inventory_ping']
 
         validations = config.get('Validations', 'volumes').split(',')
         self.__params['volumes'] = validations
@@ -134,14 +146,14 @@ class RunValidations:
             print('An error occurred!')
             sys.exit(1)
         else:
-            self.run()
+            self.start()
 
     def build(self):
         self.__generate_containerfile()
         self.__build_container()
         pass
 
-    def __build_run_cmd(self):
+    def __build_start_cmd(self):
         cmd = [
                 self.__params['container'],
                 'run', '--rm',
@@ -170,6 +182,9 @@ class RunValidations:
         # Inventory
         cmd.append('--env=INVENTORY=%s' % self.__params['inventory'])
 
+        # Action to run
+        cmd.append('--env=ACTION=%s' % self.__params.get('action'));
+
         # Validation playbooks
         if self.__params['validations'] != '':
             cmd.append('--env=VALIDATIONS=%s' % self.__params['validations'])
@@ -178,16 +193,15 @@ class RunValidations:
         self.__print(' '.join(cmd))
         return cmd
 
-    def run(self):
-        if self.__params['run']:
-            self.__print('Running validations')
-            cmd = self.__build_run_cmd()
-            self.__print('Running %s' % ' '.join(cmd))
-            try:
-                subprocess.check_call(cmd)
-            except subprocess.CalledProcessError:
-                print('An error occurred!')
-                sys.exit(2)
+    def start(self):
+        self.__print('Starting container')
+        cmd = self.__build_start_cmd()
+        self.__print('Running %s' % ' '.join(cmd))
+        try:
+            subprocess.check_call(cmd)
+        except subprocess.CalledProcessError:
+            print('An error occurred!')
+            sys.exit(2)
 
 
 if __name__ == "__main__":
@@ -258,6 +272,10 @@ if __name__ == "__main__":
                               'Defaults to %s' % default_inventory))
     parser.add_argument('--debug', '-D', action='store_true',
                         help='Toggle debug mode. Defaults to False.')
+    parser.add_argument('--list', '-L', action='store_true',
+                        help='List all validations.')
+    parser.add_argument('--inventory-ping', action='store_true',
+                        help='Run a ping test on the inventory.')
 
     args = parser.parse_args()
 

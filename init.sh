@@ -4,16 +4,16 @@ BRANCH=${REPO_BRANCH:='master'}
 INV=${INVENTORY:="/root/inventory.yaml"}
 VALS=${VALIDATIONS:="inventory-ping"}
 
-if [ "${VALS}" == "inventory-ping" ]; then
-
+# Run the inventory ping test
+if [ "${ACTION}" == "inventory_ping" ]; then
   echo "Running ping test on inventory"
   ansible all -i ${INVENTORY} -m ping
+fi
 
-else
-
+# Run a list of validations 
+if [ "${ACTION}" == "run" ]; then
   if [ -d "${DEFAULT_REPO_LOCATION}/.git" ]; then
     val_dir=${DEFAULT_REPO_LOCATION}
-    echo ${val_dir}
   else
     val_dir=$(basename "${REPO}" .git)
     echo -n "Cloning repository ${REPO}"
@@ -34,5 +34,4 @@ else
       ansible-playbook -i ${INV} playbooks/${i}.yaml
     done
   done <<< "$VALS"
-
 fi
