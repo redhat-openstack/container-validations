@@ -20,20 +20,20 @@ run.
 The script first needs to build a container image which will be able to run the
 validations. To build the immage using the default options run:
 ```Bash
-sudo ./validation.py --build
+./validation.py --build
 ```
 Please note that the default container cli is `podman` if you don't have podman
 installed use `--container=docker` instead.
 
 Once the container is built you can test it by running:
 ```Bash
-sudo ./validation.py --run
+./validation.py --run
 ```
 This will test the connection information inside the inventory file.
 
 If you want to run a specific validation run:
 ```Bash
-sudo ./validation.py --run --validations=openstack-endpoints
+./validation.py --run --validations=openstack-endpoints
 ```
 
 ### Options

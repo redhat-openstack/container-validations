@@ -22,25 +22,13 @@ COPY init.sh /init.sh
 RUN chmod 0755 /init.sh
 
 ENV ANSIBLE_HOST_KEY_CHECKING false
+ENV ANSIBLE_RETRY_FILES_ENABLED false
+ENV ANSIBLE_KEEP_REMOTE_FILES 1
 ENV ANSIBLE_REMOTE_USER %(user)s
-ENV ANSIBLE_PRIVATE_KEY_FILE %(keyfile)s
-ENV DEFAULT_REPO_LOCATION /home/%(user)s/validation-repository
+ENV ANSIBLE_PRIVATE_KEY_FILE /root/containerhost_private_key
+ENV DEFAULT_REPO_LOCATION /root/validation-repository
 
-# Create validation user
-RUN useradd -c "Validation user" -m -s /bin/sh -u %(uid)s %(user)s
-RUN echo "%(user)s ALL=(root) NOPASSWD:ALL" | sudo tee -a /etc/sudoers.d/%(user)s
-RUN chmod 0440 /etc/sudoers.d/%(user)s
-
-# Create .ssh directory to mount host key into
-RUN mkdir /home/%(user)s/.ssh
-RUN chown -R %(user)s:%(user)s /home/%(user)s/.ssh
-RUN chmod 700 /home/%(user)s/.ssh
-
-USER %(user)s
-
-COPY inventory.yaml /home/%(user)s/inventory.yaml
-
-WORKDIR /home/%(user)s
+COPY inventory.yaml /root/inventory.yaml
 
 CMD ["/init.sh"]
 '''  # noqa: E501
@@ -167,13 +155,13 @@ class RunValidations:
                 cmd.extend(['-v', volume])
 
         # Keyfile
-        cmd.append('-v%s:%s:z' % (self.__params['keyfile'],
-                                   self.__params['keyfile']))
+        cmd.append('-v%s:/root/containerhost_private_key:ro' %
+                   self.__params['keyfile'])
 
         # Repository
         if os.path.isdir(os.path.abspath(self.__params.get('repository'))):
-            cmd.append('-v%s:/home/%s/validation-repository:z' %
-                       (self.__params['repository'], self.__params['user']))
+            cmd.append('-v%s:/root/validation-repository:z' %
+                       self.__params['repository'])
         else:
             cmd.append('--env=VALIDATION_REPOSITORY=%s' %
                        self.__params['repository'])
@@ -210,7 +198,7 @@ if __name__ == "__main__":
     default_keyfile = os.path.join('/home', default_user, '.ssh/id_rsa')
     default_repo = 'https://opendev.org/openstack/tripleo-validations'
     default_branch = 'master'
-    default_inventory = os.path.join('/home', default_user, 'inventory.yaml')
+    default_inventory = os.path.join('/root/inventory.yaml')
 
     parser = argparse.ArgumentParser(
             description=('Run validations. It can either use in-line '
