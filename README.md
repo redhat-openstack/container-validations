@@ -8,30 +8,39 @@ get the following:
 - a run of a container based on this image
 
 All the logs will be in the container stdout/stderr, meaning you're able
-to rely on the container enging logging configuration in order to get a proper
+to rely on the container engine's logging configuration in order to get a proper
 status.
 
+### Inventory file
+The repository holds an inventory file which holds connection information for
+all relevant hosts. You can add or edit host information here before the first
+run.
+
 ### First run
-The script is based on a configuration file. It will be located in your current
-directory, for instance $PWD/.config/run_validations.conf.
+The script first needs to build a container image which will be able to run the
+validations. To build the immage using the default options run:
+```Bash
+./validation.py --build
+```
+Please note that the default container cli is `podman` if you don't have podman
+installed use `--container=docker` instead.
 
-This file will be generated once, unless you add the ```--regenerate``` option.
-Configuration file has priority, meaning you need to regenerate it if you want
-to modify some options. You can also edit it if you want.
-
-### Day+1 operation
-Once you have the configuration file you want, you can just call the script as
-follow:
+Once the container is built you can test it by running:
 ```Bash
 ./validation.py --run
 ```
-You can also force a rebuild:
+This will test the connection information inside the inventory file.
+
+If you want to run a specific validation run:
 ```Bash
-./validation.py --run --build
+./validation.py --run --validations=openstack-endpoints
 ```
 
 ### Options
-Please refer to ```./validation.py --help``` for a complete, up-to-date listing.
+To see a list of options run
+```Bash
+./validation.py -h
+```
 
 ## Containerfile.sample
 If you want to bypass the script, you can take the provided
