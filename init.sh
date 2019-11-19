@@ -2,7 +2,7 @@
 REPO=${VALIDATION_REPOSITORY:="https://github.com/openstack/tripleo-validations.git"}
 BRANCH=${REPO_BRANCH:='master'}
 INV=${INVENTORY:="/root/inventory.yaml"}
-VALS=${VALIDATIONS:="inventory-ping"}
+VALS=${VALIDATIONS:=""}
 
 # Run the inventory ping test
 if [ "${ACTION}" == "inventory_ping" ]; then
@@ -10,16 +10,34 @@ if [ "${ACTION}" == "inventory_ping" ]; then
   ansible all -i ${INVENTORY} -m ping
 fi
 
-# Run a list of validations 
-if [ "${ACTION}" == "run" ]; then
+if [[ "${ACTION}" =~ ^(run|list)$ ]]; then
   if [ -d "${DEFAULT_REPO_LOCATION}/.git" ]; then
     val_dir=${DEFAULT_REPO_LOCATION}
   else
-    val_dir=$(basename "${REPO}" .git)
     echo -n "Cloning repository ${REPO}"
     git clone -q -b "${BRANCH}" "${REPO}"
     echo " ... DONE"
+    val_dir=$(basename "${REPO}" .git)
   fi
+  if [ "${GROUP}" != "" ]; then
+    VALS_FROM_REPO=$(/usr/bin/python3 listing.py ${val_dir} --group ${GROUP})
+  else
+    VALS_FROM_REPO=$(/usr/bin/python3 listing.py ${val_dir})
+  fi
+fi
+
+# List validations
+if [ "${ACTION}" == "list" ]; then
+  if [ "${GROUP}" != "" ]; then
+    echo "Listing validations for group ${GROUP}."
+  else
+    echo "Listing all validations."
+  fi
+  echo ${VALS_FROM_REPO}
+fi
+
+# Run a list of validations 
+if [ "${ACTION}" == "run" ]; then
 
   cd "${val_dir}"
   VALIDATIONS_BASEDIR="$(pwd)"
@@ -28,6 +46,9 @@ if [ "${ACTION}" == "run" ]; then
   export ANSIBLE_LOOKUP_PLUGINS="${VALIDATIONS_BASEDIR}/lookup_plugins"
   export ANSIBLE_LIBRARY="${VALIDATIONS_BASEDIR}/library"
 
+  if [ "${VALS}" == "" ]; then
+    VALS=${VALS_FROM_REPO}
+  fi
   while IFS=',' read -ra LIST; do
     for i in "${LIST[@]}"; do
       echo "Running ${i}"

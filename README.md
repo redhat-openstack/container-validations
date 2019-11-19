@@ -27,13 +27,32 @@ installed use `--container=docker` instead.
 
 Once the container is built you can test it by running:
 ```Bash
-./validation.py --run
+./validation.py --inventory-ping
 ```
 This will test the connection information inside the inventory file.
 
 If you want to run a specific validation run:
 ```Bash
 ./validation.py --run --validations=openstack-endpoints
+```
+
+If you want to run all validations for a certain group run:
+```Bash
+./validation.py --run --group pre-deployment
+```
+
+If you want to run all validations run:
+```Bash
+./validation.py --run
+```
+
+If you want to list validations run:
+```Bash
+./validation.py --list --group pre-deployment
+```
+or
+```Bash
+./validation.py --list
 ```
 
 ### Options

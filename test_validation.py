@@ -20,6 +20,9 @@ TEST_ARGS = {
     'volumes': '',
     'build': False,
     'run': False,
+    'list': False,
+    'inventory_ping': False,
+    'group': '',
 }
 
 
@@ -34,10 +37,10 @@ def test_volume_is_created_for_local_repo(mocker):
         'repository': '/home/stack/tripleo-validations'
         })
     rv = RunValidations(args)
-    cmd = rv._RunValidations__build_run_cmd()
+    cmd = rv._RunValidations__build_start_cmd()
     # Make sure VALIDATION_REPOSITORY env var is not set
     assert ('--env=VALIDATION_REPOSITORY='
             '/home/stack/tripleo-validations') not in cmd
     # Make sure local repo is added as a volume
     assert ('-v/home/stack/tripleo-validations:'
-            '/home/stack/validation-repository:z') in cmd
+            '/root/validation-repository:z') in cmd

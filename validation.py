@@ -21,6 +21,9 @@ RUN yum clean all
 COPY init.sh /init.sh
 RUN chmod 0755 /init.sh
 
+COPY listing.py /listing.py
+RUN chmod 0755 /listing.py
+
 ENV ANSIBLE_HOST_KEY_CHECKING false
 ENV ANSIBLE_RETRY_FILES_ENABLED false
 ENV ANSIBLE_KEEP_REMOTE_FILES 1
@@ -33,10 +36,10 @@ COPY inventory.yaml /root/inventory.yaml
 CMD ["/init.sh"]
 '''  # noqa: E501
 
+
 CONTAINER_ACTIONS = [
     'run',
-    'list_validations',
-    'run_validations_group',
+    'list',
     'inventory_ping',
 ]
 
@@ -95,6 +98,7 @@ class RunValidations:
         config.set('Validations', 'container', self.__args['container'])
         config.set('Validations', 'inventory', self.__args['inventory'])
         config.set('Validations', 'volumes', ','.join(self.__args['volumes']))
+        config.set('Validations', 'group', self.__args['group'])
 
         if self.__args.get('create_config'):
             print('Generating config file')
@@ -116,6 +120,7 @@ class RunValidations:
         self.__params['build'] = self.__args['build']
         self.__params['run'] = self.__args['run']
         self.__params['list'] = self.__args['list']
+        self.__params['group'] = self.__args['group']
         self.__params['inventory_ping'] = self.__args['inventory_ping']
 
         validations = config.get('Validations', 'volumes').split(',')
@@ -183,7 +188,10 @@ class RunValidations:
         cmd.append('--env=INVENTORY=%s' % self.__params['inventory'])
 
         # Action to run
-        cmd.append('--env=ACTION=%s' % self.__params.get('action'));
+        cmd.append('--env=ACTION=%s' % self.__params.get('action'))
+
+        # Set group if there ist one
+        cmd.append('--env=GROUP=%s' % self.__params.get('group', ''))
 
         # Validation playbooks
         if self.__params['validations'] != '':
@@ -276,6 +284,8 @@ if __name__ == "__main__":
                         help='List all validations.')
     parser.add_argument('--inventory-ping', action='store_true',
                         help='Run a ping test on the inventory.')
+    parser.add_argument('--group', type=str, default='',
+                        help='Run validations in group.')
 
     args = parser.parse_args()
 
