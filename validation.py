@@ -100,6 +100,7 @@ class RunValidations:
         config.set('Validations', 'inventory', self.__args['inventory'])
         config.set('Validations', 'volumes', ','.join(self.__args['volumes']))
         config.set('Validations', 'group', self.__args['group'])
+        config.set('Validations', 'host', self.__args['host'])
 
         if self.__args.get('create_config'):
             print('Generating config file')
@@ -122,6 +123,7 @@ class RunValidations:
         self.__params['run'] = self.__args['run']
         self.__params['list'] = self.__args['list']
         self.__params['group'] = self.__args['group']
+        self.__params['host'] = self.__args['host']
         self.__params['inventory_ping'] = self.__args['inventory_ping']
 
         validations = config.get('Validations', 'volumes').split(',')
@@ -202,6 +204,9 @@ class RunValidations:
 
         # Set group if there ist one
         cmd.append('--env=GROUP=%s' % self.__params.get('group', ''))
+
+        # Set host if there ist one
+        cmd.append('--env=HOST=%s' % self.__params.get('host', ''))
 
         # Validation playbooks
         if self.__params['validations'] != '':
@@ -295,6 +300,8 @@ if __name__ == "__main__":
                         help='Run a ping test on the inventory.')
     parser.add_argument('--group', type=str, default='',
                         help='Run validations in group.')
+    parser.add_argument('--host', type=str, default='',
+                        help='Run validations in host.')
 
     args = parser.parse_args()
 

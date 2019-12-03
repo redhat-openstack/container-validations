@@ -21,6 +21,8 @@ if [[ "${ACTION}" =~ ^(run|list)$ ]]; then
   fi
   if [ "${GROUP}" != "" ]; then
     VALS_FROM_REPO=$(/usr/bin/python3 listing.py ${val_dir} --group ${GROUP})
+  elif [ "${HOST}" != "" ]; then
+    VALS_FROM_REPO=$(/usr/bin/python3 listing.py ${val_dir} --host ${HOST})
   else
     VALS_FROM_REPO=$(/usr/bin/python3 listing.py ${val_dir})
   fi
@@ -30,6 +32,8 @@ fi
 if [ "${ACTION}" == "list" ]; then
   if [ "${GROUP}" != "" ]; then
     echo "Listing validations for group ${GROUP}."
+  elif [ "${HOST}" != "" ]; then
+    echo "Listing validations for host ${HOST}."
   else
     echo "Listing all validations."
   fi
