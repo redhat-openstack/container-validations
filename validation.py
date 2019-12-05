@@ -28,6 +28,8 @@ RUN chmod 0755 /init.sh
 COPY listing.py /listing.py
 RUN chmod 0755 /listing.py
 
+RUN git clone %(repository)s /root/validation-repository
+
 ENV ANSIBLE_HOST_KEY_CHECKING false
 ENV ANSIBLE_RETRY_FILES_ENABLED false
 ENV ANSIBLE_KEEP_REMOTE_FILES 1
