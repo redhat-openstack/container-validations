@@ -19,6 +19,10 @@ def _get_playbooks(directory):
     return playbooks
 
 
+def _has_host(host, playbook):
+    hosts = [h.strip() for h in playbook.get('hosts', '').split(',')]
+    return host in hosts
+
 def _has_group(group, playbook):
     return group in playbook.get('vars', {}).get('metadata', {}).get(
         'groups', [])
@@ -29,6 +33,9 @@ def _filter_playbooks(args, playbooks):
     if args['group']:
         return {key: val for (key, val) in playbooks.items() if
                 _has_group(args['group'], val)}
+    if args['host']:
+        return {key: val for (key, val) in playbooks.items() if
+                _has_host(args['host'], val)}
     return playbooks
 
 
@@ -60,6 +67,8 @@ if __name__ == "__main__":
     parser.add_argument("--show", help="Show details for a single validation",
                         type=str)
     parser.add_argument("--group", help="Filter listing by validation group",
+                        type=str)
+    parser.add_argument("--host", help="Filter listing by host",
                         type=str)
 
     args = parser.parse_args()
