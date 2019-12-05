@@ -11,6 +11,10 @@ try:
 except ImportError:
     from ConfigParser import SafeConfigParser as ConfigParser
 
+
+DEFAULT_INVENTORY = 'inventory.yaml'
+CONTAINER_INVENTORY_PATH = '/root/inventory.yaml'
+
 CONTAINERFILE_TMPL = '''
 FROM %(image)s
 
@@ -31,7 +35,7 @@ ENV ANSIBLE_REMOTE_USER %(user)s
 ENV ANSIBLE_PRIVATE_KEY_FILE /root/containerhost_private_key
 ENV DEFAULT_REPO_LOCATION /root/validation-repository
 
-COPY inventory.yaml /root/inventory.yaml
+COPY %(inventory)s /root/inventory.yaml
 
 CMD ["/init.sh"]
 '''  # noqa: E501
@@ -48,9 +52,6 @@ class RunValidations:
     def __init__(self, args):
         self.__args = args
         self.__params = {}
-
-        self.__conf_file = os.path.join(os.getcwd(),
-                                        '.config', 'run_validations.conf')
 
         self.__setup()
         if self.__params['build']:
@@ -131,6 +132,9 @@ class RunValidations:
 
     def __generate_containerfile(self):
         self.__print('Generating "Containerfile"')
+        # Set inventory to default path if it is not set.
+        if self.__params['inventory'] == '':
+            self.__params['inventory'] = DEFAULT_INVENTORY
         with open('./Containerfile', 'w+') as containerfile:
             containerfile.write(CONTAINERFILE_TMPL % self.__params)
 
@@ -185,7 +189,13 @@ class RunValidations:
         cmd.append('--env=REPO_BRANCH=%s' % self.__params['branch'])
 
         # Inventory
-        cmd.append('--env=INVENTORY=%s' % self.__params['inventory'])
+        # If the inventory option has been set at container start
+        # mount it into the container.
+        if os.path.isfile(os.path.abspath(self.__params.get('inventory'))):
+            cmd.append('-v%s:%s:z' % (
+                os.path.abspath(self.__params['inventory']),
+                CONTAINER_INVENTORY_PATH))
+
 
         # Action to run
         cmd.append('--env=ACTION=%s' % self.__params.get('action'))
@@ -220,7 +230,6 @@ if __name__ == "__main__":
     default_keyfile = os.path.join('/home', default_user, '.ssh/id_rsa')
     default_repo = 'https://opendev.org/openstack/tripleo-validations'
     default_branch = 'master'
-    default_inventory = os.path.join('/root/inventory.yaml')
 
     parser = argparse.ArgumentParser(
             description=('Run validations. It can either use in-line '
@@ -273,11 +282,11 @@ if __name__ == "__main__":
                               'Can be provided multiple times. '
                               'Defaults to []'))
     parser.add_argument('--inventory', '-I', type=str,
-                        default=default_inventory,
+                        default='',
                         help=('Provide inventory for validations. Can be a '
                               'path, or a string. Please refer to Ansible '
                               'inventory documentation. '
-                              'Defaults to %s' % default_inventory))
+                              'Defaults to an empty string.'))
     parser.add_argument('--debug', '-D', action='store_true',
                         help='Toggle debug mode. Defaults to False.')
     parser.add_argument('--list', '-L', action='store_true',
