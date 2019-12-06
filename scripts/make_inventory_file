@@ -1,0 +1,66 @@
+#!/usr/bin/env python
+
+import fcntl
+import json
+import socket
+import struct
+import sys
+import yaml
+
+
+def get_ip_address(ifname):
+    s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+    return socket.inet_ntoa(fcntl.ioctl(
+        s.fileno(),
+        0x8915,  # SIOCGIFADDR
+        struct.pack('256s', ifname[:15])
+    )[20:24])
+
+
+def main(data):
+    # get ip from undercloud
+    undercloud_ip = get_ip_address('eth1')  # production
+    # when developing or testing on a non-undercloud, use the following
+    # line for getting the local IP
+    # undercloud_ip = socket.gethostbyname(socket.gethostname())
+
+    inventory = json.loads(data)
+    ansible_user = {
+        'ansible_user': inventory['overcloud']['vars']['ansible_ssh_user']}
+
+    result = {
+        'all': {
+            'hosts': None
+        }
+    }
+
+    children = {
+        node: {'hosts': {inventory[node][0]: None}, 'vars': ansible_user.copy()}
+        for node in inventory['overcloud']['children']}
+
+    result['all']['children'] = children
+
+    overcloud = {
+        'hosts': {
+            inventory[node][0]: None for node in
+            inventory['overcloud']['children']},
+        'vars': ansible_user.copy()
+    }
+
+    result['all']['children']['overcloud'] = overcloud
+
+    undercloud = {'hosts': {undercloud_ip: None},
+                  'vars': inventory['undercloud']['vars'].copy()}
+
+    # ansible connection is not local when used from validations container
+    undercloud['vars'].pop('ansible_connection')
+
+    result['all']['children']['undercloud'] = undercloud
+
+    print(yaml.safe_dump(result, default_flow_style=False))
+
+
+if __name__ == '__main__':
+    # read in json data from tripleo-ansible-inventory
+    raw_inventory_data = sys.stdin.read()
+    main(raw_inventory_data)
