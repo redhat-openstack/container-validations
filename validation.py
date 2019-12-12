@@ -19,7 +19,7 @@ CONTAINERFILE_TMPL = '''
 FROM %(image)s
 
 # Install some packages
-RUN yum install -y git ansible sudo %(extra_pkgs)s
+RUN yum install -y git ansible sudo gcc python3-devel python3-pip %(extra_pkgs)s
 RUN yum clean all
 
 COPY init.sh /init.sh
@@ -28,7 +28,10 @@ RUN chmod 0755 /init.sh
 COPY listing.py /listing.py
 RUN chmod 0755 /listing.py
 
+# Add user install path to Python path and install packages
+ENV PYTHONPATH ${PYTHONPATH}:/root/.local/lib/python3.7/site-packages
 RUN git clone %(repository)s /root/validation-repository
+RUN pip3 install --user -r /root/validation-repository/requirements.txt
 
 ENV ANSIBLE_HOST_KEY_CHECKING false
 ENV ANSIBLE_RETRY_FILES_ENABLED false
