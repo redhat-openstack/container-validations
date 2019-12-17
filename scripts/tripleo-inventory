@@ -1,5 +1,6 @@
 #!/usr/bin/env python
 
+import argparse
 import fcntl
 import json
 import socket
@@ -24,22 +25,28 @@ def main(data):
     # line for getting the local IP
     # undercloud_ip = socket.gethostbyname(socket.gethostname())
 
+    # load the inventory data from the json provided
     inventory = json.loads(data)
+
+    # create the ansible user var to be reused for nodes
     ansible_user = {
         'ansible_user': inventory['overcloud']['vars']['ansible_ssh_user']}
 
+    # create the dictionary to hold the transformed inventory data
     result = {
         'all': {
             'hosts': None
         }
     }
 
+    # add the overcloud nodes as children to the inventory
     children = {
         node: {'hosts': {inventory[node][0]: None}, 'vars': ansible_user.copy()}
         for node in inventory['overcloud']['children']}
 
     result['all']['children'] = children
 
+    # add the overcloud group to the inventory
     overcloud = {
         'hosts': {
             inventory[node][0]: None for node in
@@ -49,6 +56,7 @@ def main(data):
 
     result['all']['children']['overcloud'] = overcloud
 
+    # add the undercloud node to the inventory
     undercloud = {'hosts': {undercloud_ip: None},
                   'vars': inventory['undercloud']['vars'].copy()}
 
@@ -57,10 +65,22 @@ def main(data):
 
     result['all']['children']['undercloud'] = undercloud
 
+    # display the inventory in yaml format
     print(yaml.safe_dump(result, default_flow_style=False))
 
 
 if __name__ == '__main__':
-    # read in json data from tripleo-ansible-inventory
+
+    parser = argparse.ArgumentParser(
+        description=('Create an Ansible inventory file from a TripleO '
+                     'deployed OpenStack cloud.'),
+        epilog=(
+            'Example: tripleo-ansible-inventory | '
+            './tripleo-inventory > inventory.yaml')
+    )
+
+    args = parser.parse_args()
+
+    # read in json data from piped tripleo-ansible-inventory output
     raw_inventory_data = sys.stdin.read()
     main(raw_inventory_data)
