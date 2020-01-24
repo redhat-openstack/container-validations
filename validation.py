@@ -106,6 +106,7 @@ class RunValidations:
         config.set('Validations', 'volumes', ','.join(self.__args['volumes']))
         config.set('Validations', 'group', self.__args['group'])
         config.set('Validations', 'host', self.__args['host'])
+        config.set('Validations', 'log_path', self.__args['log_path'])
 
         if self.__args.get('create_config'):
             print('Generating config file')
@@ -130,6 +131,7 @@ class RunValidations:
         self.__params['group'] = self.__args['group']
         self.__params['host'] = self.__args['host']
         self.__params['inventory_ping'] = self.__args['inventory_ping']
+        self.__params['log_path'] = self.__args['log_path']
 
         validations = config.get('Validations', 'volumes').split(',')
         self.__params['volumes'] = validations
@@ -203,6 +205,17 @@ class RunValidations:
                 os.path.abspath(self.__params['inventory']),
                 CONTAINER_INVENTORY_PATH))
 
+        # Logging
+        log_path = self.__params['log_path']
+        if log_path != '':
+            # Make sure the file exists
+            if not os.path.isfile(log_path):
+                directory = os.path.dirname(log_path)
+                if not os.path.isdir(directory):
+                    os.makedirs(directory)
+                open(log_path, 'a')
+            cmd.append('-v%s:/root/validations.log:z' %
+                       self.__params['log_path'])
 
         # Action to run
         cmd.append('--env=ACTION=%s' % self.__params.get('action'))
@@ -307,6 +320,8 @@ if __name__ == "__main__":
                         help='Run validations in group.')
     parser.add_argument('--host', type=str, default='',
                         help='Run validations in host.')
+    parser.add_argument('--log-path', type=str, default='',
+                        help='Local log path for validations output.')
 
     args = parser.parse_args()
 
