@@ -4,6 +4,12 @@ BRANCH=${REPO_BRANCH:='master'}
 INV=${INVENTORY:="/root/inventory.yaml"}
 VALS=${VALIDATIONS:=""}
 
+# Set logging env var to file mounted into the container.
+if [ -f "/root/validations.log" ]; then
+  export ANSIBLE_LOG_PATH="/root/validations.log"
+fi
+
+
 # Run the inventory ping test
 if [ "${ACTION}" == "inventory_ping" ]; then
   echo "Running ping test on inventory"
