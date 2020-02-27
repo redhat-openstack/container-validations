@@ -107,9 +107,10 @@ class RunValidations:
         config.set('Validations', 'group', self.__args['group'])
         config.set('Validations', 'host', self.__args['host'])
         config.set('Validations', 'log_path', self.__args['log_path'])
-        if self.__args.get('ansible_callback'):
-            config.set('Validations', 'ansible_callback',
-                       self.__args['ansible_callback'])
+        config.set('Validations', 'log_path_host',
+                   self.__args['log_path_host'])
+        config.set('Validations', 'ansible_callback',
+                   self.__args['ansible_callback'])
 
         if self.__args.get('create_config'):
             print('Generating config file')
@@ -135,6 +136,7 @@ class RunValidations:
         self.__params['host'] = self.__args['host']
         self.__params['inventory_ping'] = self.__args['inventory_ping']
         self.__params['log_path'] = self.__args['log_path']
+        self.__params['log_path_host'] = self.__args['log_path_host']
         self.__params['ansible_callback'] = self.__args['ansible_callback']
 
         validations = config.get('Validations', 'volumes').split(',')
@@ -211,15 +213,14 @@ class RunValidations:
 
         # Logging
         log_path = self.__params['log_path']
-        if log_path != '':
-            # Make sure the file exists
-            if not os.path.isfile(log_path):
-                directory = os.path.dirname(log_path)
-                if not os.path.isdir(directory):
-                    os.makedirs(directory)
-                open(log_path, 'a')
-            cmd.append('-v%s:/root/validations.log:z' %
-                       self.__params['log_path'])
+        log_path_host = self.__params['log_path_host']
+        # Make sure the file exists
+        if not os.path.isfile(log_path_host):
+            directory = os.path.dirname(os.path.abspath(log_path_host))
+            if not os.path.isdir(directory):
+                os.makedirs(directory)
+            open(log_path_host, 'a')
+        cmd.append('-v%s:%s:z' % (os.path.abspath(log_path_host), log_path))
 
         # Callback
         if self.__params['ansible_callback']:
@@ -335,8 +336,12 @@ if __name__ == "__main__":
                         help='Run validations in group.')
     parser.add_argument('--host', type=str, default='',
                         help='Run validations in host.')
-    parser.add_argument('--log-path', type=str, default='',
+    parser.add_argument('--log-path', type=str,
+                        default='/root/validations.log',
                         help='Local log path for validations output.')
+    parser.add_argument('--log-path-host', type=str, default='validations.log',
+                        help='Local log path for validations output on the '
+                             'host.')
     parser.add_argument('--ansible-callback', type=str,
                         default=None,
                         help='Define ansible stdout callback. Validations has '
