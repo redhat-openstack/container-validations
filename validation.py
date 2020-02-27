@@ -107,8 +107,9 @@ class RunValidations:
         config.set('Validations', 'group', self.__args['group'])
         config.set('Validations', 'host', self.__args['host'])
         config.set('Validations', 'log_path', self.__args['log_path'])
-        config.set('Validations', 'ansible_callback',
-                   self.__args['ansible_callback'])
+        if self.__args.get('ansible_callback'):
+            config.set('Validations', 'ansible_callback',
+                       self.__args['ansible_callback'])
 
         if self.__args.get('create_config'):
             print('Generating config file')
