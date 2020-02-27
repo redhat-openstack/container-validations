@@ -1,6 +1,7 @@
 #!/usr/bin/env python
 
 import argparse
+from distutils import spawn
 import os
 import pwd
 import subprocess
@@ -109,8 +110,10 @@ class RunValidations:
         config.set('Validations', 'log_path', self.__args['log_path'])
         config.set('Validations', 'log_path_host',
                    self.__args['log_path_host'])
-        config.set('Validations', 'ansible_callback',
-                   self.__args['ansible_callback'])
+        if self.__args.get('ansible_callback'):
+            config.set('Validations', 'ansible_callback',
+                       self.__args['ansible_callback'])
+
 
         if self.__args.get('create_config'):
             print('Generating config file')
@@ -153,8 +156,14 @@ class RunValidations:
         with open('./Containerfile', 'w+') as containerfile:
             containerfile.write(CONTAINERFILE_TMPL % self.__params)
 
+    def _check_container_cli(self, cli):
+        if not spawn.find_executable(cli):
+            raise RuntimeError(
+                "The container cli {} doesn't exist on this host".format(cli))
+
     def __build_container(self):
         self.__print('Building image')
+        self._check_container_cli(self.__params['container'])
         cmd = [
                 self.__params['container'],
                 'build',
@@ -178,11 +187,11 @@ class RunValidations:
         pass
 
     def __build_start_cmd(self):
+        self._check_container_cli(self.__params['container'])
         cmd = [
                 self.__params['container'],
                 'run', '--rm',
                 ]
-
         # Volumes
         if len(self.__params['volumes']) > 1:
             self.__print('Adding volumes:')
