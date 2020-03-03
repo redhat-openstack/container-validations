@@ -112,7 +112,7 @@ You can of course edit the file with a text editor, too.
 
 ### Logging
 
-If you want to have the validation results logged into a file you can use the `--log-path <local file path>` option. Instead of just outputting the validation results on stdout it will log the results to the given log file path. If the file already exists the entries will be appended to the file, otherwise the file will be created. 
+If you want to have the validation results logged into a file you can use the `--log-path <local file path>` option. Instead of just outputting the validation results on stdout it will log the results to the given log file path. If the file already exists the entries will be appended to the file, otherwise the file will be created.
 
 
 ### Options
@@ -134,7 +134,7 @@ Here's a step to step guide to test a new validation in container-validations:
 
 For example if you want to test a new validation that runs on the host from
 which you're running container-validations your inventory file should look
-something like this: 
+something like this:
 
 ```
 ---
@@ -163,7 +163,7 @@ Please note that you can test all connections in your inventory file:
 
 Usually you want to use a local repository for development. You can use the
 `--repository` option to define a path to a local repository (remember you can
-store the value in a config file): 
+store the value in a config file):
 
 ```Bash
 ./validations.py --repository /home/stack/tripleo-validations --validations my-validation
@@ -201,7 +201,7 @@ In order to build it on your own, you can run:
 In order to manually run the container, you can run:
 ```Bash
 (podman|docker) run --rm -e "INVENTORY=localhost," \
-  -e "VALIDATIONS=dns,no-op' \
+  -e "VALIDATIONS=dns,no-op" \
   -v $(pwd)/.ssh/id_rsa:/home/my-user/.ssh/id_rsa \
   validations
 ```
@@ -223,4 +223,3 @@ Set the keyfile manually (usually /home/<current user>/.ssh/id_rsa).
 
 Install additional packages into your container image if they're needed by
 custom validations.
-

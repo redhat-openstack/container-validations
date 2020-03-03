@@ -5,10 +5,7 @@ INV=${INVENTORY:="/root/inventory.yaml"}
 VALS=${VALIDATIONS:=""}
 
 # Set logging env var to file mounted into the container.
-if [ -f "/root/validations.log" ]; then
-  export ANSIBLE_LOG_PATH="/root/validations.log"
-fi
-
+export ANSIBLE_LOG_PATH="/root/validations.log"
 
 # Run the inventory ping test
 if [ "${ACTION}" == "inventory_ping" ]; then
@@ -26,11 +23,11 @@ if [[ "${ACTION}" =~ ^(run|list)$ ]]; then
     val_dir=$(basename "${REPO}" .git)
   fi
   if [ "${GROUP}" != "" ]; then
-    VALS_FROM_REPO=$(/usr/bin/python3 listing.py ${val_dir} --group ${GROUP})
+    VALS_FROM_REPO=$(/usr/bin/python3 /root/listing.py ${val_dir} --group ${GROUP})
   elif [ "${HOST}" != "" ]; then
-    VALS_FROM_REPO=$(/usr/bin/python3 listing.py ${val_dir} --host ${HOST})
+    VALS_FROM_REPO=$(/usr/bin/python3 /root/listing.py ${val_dir} --host ${HOST})
   else
-    VALS_FROM_REPO=$(/usr/bin/python3 listing.py ${val_dir})
+    VALS_FROM_REPO=$(/usr/bin/python3 /root/listing.py ${val_dir})
   fi
 fi
 
@@ -46,7 +43,7 @@ if [ "${ACTION}" == "list" ]; then
   echo ${VALS_FROM_REPO}
 fi
 
-# Run a list of validations 
+# Run a list of validations
 if [ "${ACTION}" == "run" ]; then
 
   cd "${val_dir}"

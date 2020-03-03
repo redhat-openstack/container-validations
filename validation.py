@@ -1,6 +1,7 @@
 #!/usr/bin/env python
 
 import argparse
+from distutils import spawn
 import os
 import pwd
 import subprocess
@@ -22,11 +23,11 @@ FROM %(image)s
 RUN yum install -y git ansible sudo gcc python3-devel python3-pip %(extra_pkgs)s
 RUN yum clean all
 
-COPY init.sh /init.sh
-RUN chmod 0755 /init.sh
+COPY init.sh /root/init.sh
+RUN chmod 0755 /root/init.sh
 
-COPY listing.py /listing.py
-RUN chmod 0755 /listing.py
+COPY listing.py /root/listing.py
+RUN chmod 0755 /root/listing.py
 
 # Add user install path to Python path and install packages
 ENV PYTHONPATH ${PYTHONPATH}:/root/.local/lib/python3.7/site-packages
@@ -42,7 +43,7 @@ ENV DEFAULT_REPO_LOCATION /root/validation-repository
 
 COPY %(inventory)s /root/inventory.yaml
 
-CMD ["/init.sh"]
+CMD ["/root/init.sh"]
 '''  # noqa: E501
 
 
@@ -107,6 +108,12 @@ class RunValidations:
         config.set('Validations', 'group', self.__args['group'])
         config.set('Validations', 'host', self.__args['host'])
         config.set('Validations', 'log_path', self.__args['log_path'])
+        config.set('Validations', 'log_path_host',
+                   self.__args['log_path_host'])
+        if self.__args.get('ansible_callback'):
+            config.set('Validations', 'ansible_callback',
+                       self.__args['ansible_callback'])
+
 
         if self.__args.get('create_config'):
             print('Generating config file')
@@ -132,6 +139,8 @@ class RunValidations:
         self.__params['host'] = self.__args['host']
         self.__params['inventory_ping'] = self.__args['inventory_ping']
         self.__params['log_path'] = self.__args['log_path']
+        self.__params['log_path_host'] = self.__args['log_path_host']
+        self.__params['ansible_callback'] = self.__args['ansible_callback']
 
         validations = config.get('Validations', 'volumes').split(',')
         self.__params['volumes'] = validations
@@ -147,8 +156,14 @@ class RunValidations:
         with open('./Containerfile', 'w+') as containerfile:
             containerfile.write(CONTAINERFILE_TMPL % self.__params)
 
+    def _check_container_cli(self, cli):
+        if not spawn.find_executable(cli):
+            raise RuntimeError(
+                "The container cli {} doesn't exist on this host".format(cli))
+
     def __build_container(self):
         self.__print('Building image')
+        self._check_container_cli(self.__params['container'])
         cmd = [
                 self.__params['container'],
                 'build',
@@ -172,11 +187,11 @@ class RunValidations:
         pass
 
     def __build_start_cmd(self):
+        self._check_container_cli(self.__params['container'])
         cmd = [
                 self.__params['container'],
                 'run', '--rm',
                 ]
-
         # Volumes
         if len(self.__params['volumes']) > 1:
             self.__print('Adding volumes:')
@@ -207,15 +222,25 @@ class RunValidations:
 
         # Logging
         log_path = self.__params['log_path']
-        if log_path != '':
-            # Make sure the file exists
-            if not os.path.isfile(log_path):
-                directory = os.path.dirname(log_path)
-                if not os.path.isdir(directory):
-                    os.makedirs(directory)
-                open(log_path, 'a')
-            cmd.append('-v%s:/root/validations.log:z' %
-                       self.__params['log_path'])
+        log_path_host = self.__params['log_path_host']
+        # Make sure the file exists
+        if not os.path.isfile(log_path_host):
+            directory = os.path.dirname(os.path.abspath(log_path_host))
+            if not os.path.isdir(directory):
+                os.makedirs(directory)
+            open(log_path_host, 'a')
+        cmd.append('-v%s:%s:z' % (os.path.abspath(log_path_host), log_path))
+
+        # Callback
+        if self.__params['ansible_callback']:
+            cmd.append('--env=ANSIBLE_STDOUT_CALLBACK=%s' %
+                       self.__params['ansible_callback'])
+            # Force color
+            cmd.append('--env=ANSIBLE_FORCE_COLOR=true')
+
+        # Debug
+        if self.__params['debug']:
+            cmd.append('--env=ANSIBLE_VERBOSITY=4')
 
         # Action to run
         cmd.append('--env=ACTION=%s' % self.__params.get('action'))
@@ -320,8 +345,18 @@ if __name__ == "__main__":
                         help='Run validations in group.')
     parser.add_argument('--host', type=str, default='',
                         help='Run validations in host.')
-    parser.add_argument('--log-path', type=str, default='',
+    parser.add_argument('--log-path', type=str,
+                        default='/root/validations.log',
                         help='Local log path for validations output.')
+    parser.add_argument('--log-path-host', type=str, default='validations.log',
+                        help='Local log path for validations output on the '
+                             'host.')
+    parser.add_argument('--ansible-callback', type=str,
+                        default=None,
+                        help='Define ansible stdout callback. Validations has '
+                             'its own stdout callback named: '
+                             'validation_output. The standard Ansible one is: '
+                             'default')
 
     args = parser.parse_args()
 
