@@ -1,4 +1,4 @@
-#!/usr/bin/env python
+#!/usr/bin/env python3
 
 #   Copyright 2020 Red Hat, Inc.
 #
@@ -37,8 +37,10 @@ LABEL name="VF dockerfile"
 RUN dnf install -y git python3-pip gcc python3-devel jq %(extra_pkgs)s
 
 # Clone the Framework and common Validations
-RUN git clone https://opendev.org/openstack/validations-common /root/validations-common
-RUN git clone https://opendev.org/openstack/validations-libs /root/validations-libs
+RUN git clone https://opendev.org/openstack/validations-common \
+    /root/validations-common
+RUN git clone https://opendev.org/openstack/validations-libs \
+    /root/validations-libs
 
 # Clone user repository if provided
 %(clone_user_repo)s
@@ -65,6 +67,7 @@ ENV ANSIBLE_PRIVATE_KEY_FILE /root/containerhost_private_key
 %(entrypoint)s
 """
 
+
 class Validation(argparse.ArgumentParser):
     """Validation client implementation class"""
 
@@ -82,10 +85,10 @@ class Validation(argparse.ArgumentParser):
                                   'Defaults to False'))
         parser.add_argument('--interactive', '-i', action='store_true',
                             help=('Execute interactive Validation shell. '
-                            'Defaults to False'))
+                                  'Defaults to False'))
         parser.add_argument('--build', '-B', action='store_true',
                             help=('Build container even if it exists. '
-                            'Defaults to False'))
+                                  'Defaults to False'))
         parser.add_argument('--cmd', type=str, nargs=argparse.REMAINDER,
                             default=None,
                             help='Validation command you want to execute, '
@@ -127,7 +130,9 @@ class Validation(argparse.ArgumentParser):
                             help=('Path of the Ansible inventory. '
                                   'It will be pulled to {} inside the '
                                   'container. '.format(
-                                  CONTAINER_INVENTORY_PATH)))
+                                    CONTAINER_INVENTORY_PATH)))
+        parser.add_argument('--debug', '-D', action='store_true',
+                            help='Toggle debug mode. Defaults to False.')
 
         return parser.parse_args()
 
@@ -142,12 +147,12 @@ class Validation(argparse.ArgumentParser):
         self.interactive = parsed_args.interactive
         self.cmd = parsed_args.cmd
         # Build container
-        build = parsed_args.build
-        # Run command
-        run = parsed_args.run
-        # Build params
         self.repository = parsed_args.repository
         self.branch = parsed_args.branch
+        self.debug = parsed_args.debug
+
+        build = parsed_args.build
+        run = parsed_args.run
         # Validation params
         self.inventory = parsed_args.inventory
         self.volumes = parsed_args.volumes
@@ -158,14 +163,16 @@ class Validation(argparse.ArgumentParser):
             self.run()
 
     def _print(self, string, debug=True):
-        if bool(True):
+        if self.debug:
             print(string)
 
     def _generate_containerfile(self):
         self._print('Generating "Containerfile"')
         clone_user_repo, install_user_repo, entrypoint = "", "", ""
         if self.repository:
-            clone_user_repo = ("RUN git clone {} -b {} /root/user_repo").format(self.repository, self.branch)
+            clone_user_repo = ("RUN git clone {} -b {} "
+                               "/root/user_repo").format(self.repository,
+                                                         self.branch)
             install_user_repo = ("RUN cd /root/user_repo && \\"
                                  "python3 -m pip install .")
         if self.interactive:
