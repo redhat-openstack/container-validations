@@ -249,6 +249,8 @@ class Validation(argparse.ArgumentParser):
                 cmd.append('-v%s:%s:z' % (
                     os.path.abspath(self.inventory),
                     CONTAINER_INVENTORY_PATH))
+        # Map host network config
+        cmd.append('--network=host')
         # Container name
         cmd.append('localhost/validation')
         # Validation binary
