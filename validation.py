@@ -23,8 +23,8 @@ import subprocess
 import sys
 
 
-DESCRIPTION = "Build, Run, List and Show Validations executed from a container."
-EPILOG = "Example: ./validation run --validation check-ftype,512e"
+DESCRIPTION = "Build and execute Validations from a container."
+EPILOG = "Example: ./validation --run --cmd run --validation check-ftype,512e"
 
 VALIDATIONS_LOG_BASEDIR = os.path.expanduser('~/validations')
 CONTAINER_INVENTORY_PATH = '/root/inventory.yaml'
@@ -112,7 +112,8 @@ class Validation(argparse.ArgumentParser):
                             help='Container engine. Defaults to podman.')
         parser.add_argument('--validation-log-dir', '-l', type=str,
                             default=VALIDATIONS_LOG_BASEDIR,
-                            help=('TBD'))
+                            help=('Path where the log files and artifacts '
+                                  'will be located. '))
         parser.add_argument('--repository', '-r', type=str,
                             default=None,
                             help=('Remote repository to clone validations '
@@ -209,7 +210,6 @@ class Validation(argparse.ArgumentParser):
         # Keyfile
         cmd.append('-v%s:/root/containerhost_private_key:z' %
                    self.keyfile)
-        #cmd.append('--network="host"')
         # log path
         if os.path.isdir(os.path.abspath(self.validation_log_dir)):
             cmd.append('-v%s:/root/validations:z' %
@@ -220,21 +220,18 @@ class Validation(argparse.ArgumentParser):
             for volume in self.volumes:
                 self._print(volume)
                 cmd.extend(['-v', volume])
-
         # Inventory
         if self.inventory:
             if os.path.isfile(os.path.abspath(self.inventory)):
                 cmd.append('-v%s:%s:z' % (
                     os.path.abspath(self.inventory),
                     CONTAINER_INVENTORY_PATH))
-
         # Container name
         cmd.append('localhost/validation')
         # Validation binary
         cmd.append('validation')
         if not self.interactive and self.cmd:
             cmd.extend(self.cmd)
-        import pdb; pdb.set_trace()
         return cmd
 
     def build(self):
