@@ -28,6 +28,7 @@ EPILOG = "Example: ./validation --run --cmd run --validation check-ftype,512e"
 
 VALIDATIONS_LOG_BASEDIR = os.path.expanduser('~/validations')
 CONTAINER_INVENTORY_PATH = '/root/inventory.yaml'
+COMMUNITY_VALIDATION_PATH = os.path.expanduser('~/community-validations')
 
 CONTAINERFILE_TMPL = """
 FROM %(image)s
@@ -207,6 +208,15 @@ class Validation(argparse.ArgumentParser):
             print('An error occurred!')
             sys.exit(1)
 
+    def _create_volume(self, path):
+        try:
+            self._print("Attempt to create {}.".format(path))
+            os.mkdir(path)
+        except (OSError, FileExistsError) as e:
+            self._print(e)
+            pass
+
+
     def _build_run_cmd(self):
         self._check_container_cli(self.container)
         if self.interactive:
@@ -218,9 +228,15 @@ class Validation(argparse.ArgumentParser):
         cmd.append('-v%s:/root/containerhost_private_key:z' %
                    self.keyfile)
         # log path
+        self._create_volume(self.validation_log_dir)
         if os.path.isdir(os.path.abspath(self.validation_log_dir)):
             cmd.append('-v%s:/root/validations:z' %
                        self.validation_log_dir)
+        # community validation path
+        self._create_volume(COMMUNITY_VALIDATION_PATH)
+        if os.path.isdir(os.path.abspath(COMMUNITY_VALIDATION_PATH)):
+            cmd.append('-v%s:/root/community-validations:z' %
+                       COMMUNITY_VALIDATION_PATH)
         # Volumes
         if self.volumes:
             self._print('Adding volumes:')
