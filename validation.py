@@ -45,6 +45,7 @@ RUN git clone https://opendev.org/openstack/validations-libs \
 
 # Clone user repository if provided
 %(clone_user_repo)s
+%(install_user_repo)s
 
 RUN python3 -m pip install cryptography==3.3
 
