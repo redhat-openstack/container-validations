@@ -1,174 +1,194 @@
 #!/usr/bin/env python
 
+#   Copyright 2020 Red Hat, Inc.
+#
+#   Licensed under the Apache License, Version 2.0 (the "License"); you may
+#   not use this file except in compliance with the License. You may obtain
+#   a copy of the License at
+#
+#        http://www.apache.org/licenses/LICENSE-2.0
+#
+#   Unless required by applicable law or agreed to in writing, software
+#   distributed under the License is distributed on an "AS IS" BASIS, WITHOUT
+#   WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See the
+#   License for the specific language governing permissions and limitations
+#   under the License.
+
 import argparse
 from distutils import spawn
+import logging
 import os
 import pwd
 import subprocess
 import sys
 
-try:
-    from configparser import ConfigParser
-except ImportError:
-    from ConfigParser import SafeConfigParser as ConfigParser
 
+DESCRIPTION = "Build, Run, List and Show Validations executed from a container."
+EPILOG = "Example: ./validation run --validation check-ftype,512e"
 
-DEFAULT_INVENTORY = 'inventory.yaml'
+VALIDATIONS_LOG_BASEDIR = os.path.expanduser('~/validations')
 CONTAINER_INVENTORY_PATH = '/root/inventory.yaml'
 
-CONTAINERFILE_TMPL = '''
+CONTAINERFILE_TMPL = """
 FROM %(image)s
 
-# Install some packages
-RUN yum install -y git ansible sudo gcc python3-devel python3-pip %(extra_pkgs)s
-RUN yum clean all
+LABEL name="VF dockerfile"
 
-COPY init.sh /root/init.sh
-RUN chmod 0755 /root/init.sh
+RUN dnf install -y git python3-pip gcc python3-devel jq %(extra_pkgs)s
 
-COPY listing.py /root/listing.py
-RUN chmod 0755 /root/listing.py
+# Clone the Framework and common Validations
+RUN git clone https://opendev.org/openstack/validations-common /root/validations-common
+RUN git clone https://opendev.org/openstack/validations-libs /root/validations-libs
 
-# Add user install path to Python path and install packages
-ENV PYTHONPATH ${PYTHONPATH}:/root/.local/lib/python3.7/site-packages
-RUN git clone %(repository)s /root/validation-repository
-RUN pip3 install --user -r /root/validation-repository/requirements.txt
+# Clone user repository if provided
+%(clone_user_repo)s
+
+RUN python3 -m pip install cryptography==3.3
+
+RUN cd /root/validations-libs && \
+    python3 -m pip install .
+
+RUN cd /root/validations-common && \
+    python3 -m pip install .
+
+#Setting up the default directory structure for both ansible,
+#and the VF
+RUN ln -s /usr/local/share/ansible  /usr/share/ansible
 
 ENV ANSIBLE_HOST_KEY_CHECKING false
 ENV ANSIBLE_RETRY_FILES_ENABLED false
 ENV ANSIBLE_KEEP_REMOTE_FILES 1
-ENV ANSIBLE_REMOTE_USER %(user)s
+# @todo: Fix the User
+ENV ANSIBLE_REMOTE_USER root
 ENV ANSIBLE_PRIVATE_KEY_FILE /root/containerhost_private_key
-ENV DEFAULT_REPO_LOCATION /root/validation-repository
 
-COPY %(inventory)s /root/inventory.yaml
+%(entrypoint)s
+"""
 
-CMD ["/root/init.sh"]
-'''  # noqa: E501
+class Validation(argparse.ArgumentParser):
+    """Validation client implementation class"""
 
+    log = logging.getLogger(__name__ + ".Validation")
 
-CONTAINER_ACTIONS = [
-    'run',
-    'list',
-    'inventory_ping',
-]
+    def __init__(self, description=DESCRIPTION, epilog=EPILOG):
+        """Init validation paser"""
+        super(Validation, self).__init__(description=DESCRIPTION,
+                                         epilog=EPILOG)
 
+    def parser(self, parser):
+        """Argument parser for validation"""
+        parser.add_argument('--run', '-R', action='store_true',
+                            help=('Run Validation command. '
+                                  'Defaults to False'))
+        parser.add_argument('--interactive', '-i', action='store_true',
+                            help=('Execute interactive Validation shell. '
+                            'Defaults to False'))
+        parser.add_argument('--build', '-B', action='store_true',
+                            help=('Build container even if it exists. '
+                            'Defaults to False'))
+        parser.add_argument('--cmd', type=str, nargs=argparse.REMAINDER,
+                            default=None,
+                            help='Validation command you want to execute, '
+                                 'use --help to get more information. '
+                                 'Only available in non-interactive mode. ')
 
-class RunValidations:
-    def __init__(self, args):
-        self.__args = args
-        self.__params = {}
+        parser.add_argument('--image', type=str, default='fedora:30',
+                            help='Container base image. Defaults to fedora:30')
+        parser.add_argument('--extra-pkgs', type=str, default='',
+                            help=('Extra packages to install in the container.'
+                                  'Comma or space separated list. '
+                                  'Defaults to empty string.'))
+        parser.add_argument('--volumes', '-v', type=str, action='append',
+                            default=[],
+                            help=('Volumes you want to add to the container. '
+                                  'Can be provided multiple times. '
+                                  'Defaults to []'))
+        parser.add_argument('--keyfile', '-K', type=str,
+                            default=os.path.join(os.path.expanduser('~'),
+                                                 '.ssh/id_rsa'),
+                            help=('Keyfile path to bind-mount in container. '))
+        parser.add_argument('--container', '-c', type=str, default='podman',
+                            choices=['docker', 'podman'],
+                            help='Container engine. Defaults to podman.')
+        parser.add_argument('--validation-log-dir', '-l', type=str,
+                            default=VALIDATIONS_LOG_BASEDIR,
+                            help=('TBD'))
+        parser.add_argument('--repository', '-r', type=str,
+                            default=None,
+                            help=('Remote repository to clone validations '
+                                  'role from.'))
+        parser.add_argument('--branch', '-b', type=str, default='master',
+                            help=('Remote repository branch to clone '
+                                  'validations from. Defaults to master'))
 
-        self.__setup()
-        if self.__params['build']:
+        parser.add_argument('--inventory', '-I', type=str,
+                            default=None,
+                            help=('Path of the Ansible inventory. '
+                                  'It will be pulled to {} inside the '
+                                  'container. '.format(
+                                  CONTAINER_INVENTORY_PATH)))
+
+        return parser.parse_args()
+
+    def take_action(self, parsed_args):
+        """Take validation action"""
+        # Container params
+        self.image = parsed_args.image
+        self.extra_pkgs = parsed_args.extra_pkgs
+        self.container = parsed_args.container
+        self.validation_log_dir = parsed_args.validation_log_dir
+        self.keyfile = parsed_args.keyfile
+        self.interactive = parsed_args.interactive
+        self.cmd = parsed_args.cmd
+        # Build container
+        build = parsed_args.build
+        # Run command
+        run = parsed_args.run
+        # Build params
+        self.repository = parsed_args.repository
+        self.branch = parsed_args.branch
+        # Validation params
+        self.inventory = parsed_args.inventory
+        self.volumes = parsed_args.volumes
+
+        if build:
             self.build()
-        for action in CONTAINER_ACTIONS:
-            if self.__params.get(action):
-                self.__params['action'] = action
-                self.start()
-                break
-        pass
+        if run:
+            self.run()
 
-    def __print(self, string, debug=True):
-        if bool(self.__params['debug']):
+    def _print(self, string, debug=True):
+        if bool(True):
             print(string)
 
-    def __create_config_file(self, config):
-        abs_path = os.path.abspath(self.__args['create_config'])
-        if not os.path.isdir(os.path.dirname(abs_path)):
-            os.makedirs(os.path.dirname(abs_path))
-        with open(abs_path, 'w+') as cfg_file:
-            config.write(cfg_file)
-
-    def __get_config_from_file(self, path):
-        abs_path = os.path.abspath(path)
-        config = ConfigParser(allow_no_value=True)
-        with open(abs_path, 'r') as cfg_file:
-            try:
-                config.read_file(cfg_file)
-            except AttributeError:
-                config.readfp(cfg_file)
-        return config
-
-    def __setup(self):
-        config = ConfigParser()
-        config.add_section('Validations')
-        config.set('Validations', 'user', self.__args['user'])
-        config.set('Validations', 'uid', str(self.__args['uid']))
-        config.set('Validations', 'keyfile', self.__args['keyfile'])
-        config.set('Validations', 'image', self.__args['image'])
-        config.set('Validations', 'extra_pkgs', self.__args['extra_pkgs'])
-        config.set('Validations', 'debug', str(self.__args['debug']))
-        config.set('Validations', 'validations', self.__args['validations'])
-        config.set('Validations', 'repository', self.__args['repository'])
-        config.set('Validations', 'branch', self.__args['branch'])
-        config.set('Validations', 'container', self.__args['container'])
-        config.set('Validations', 'inventory', self.__args['inventory'])
-        config.set('Validations', 'volumes', ','.join(self.__args['volumes']))
-        config.set('Validations', 'group', self.__args['group'])
-        config.set('Validations', 'host', self.__args['host'])
-        config.set('Validations', 'log_path', self.__args['log_path'])
-        config.set('Validations', 'log_path_host',
-                   self.__args['log_path_host'])
-        if self.__args.get('ansible_callback'):
-            config.set('Validations', 'ansible_callback',
-                       self.__args['ansible_callback'])
-
-
-        if self.__args.get('create_config'):
-            print('Generating config file')
-            self.__create_config_file(config)
-
-        if self.__args.get('config'):
-            config = self.__get_config_from_file(self.__args['config'])
-
-        self.__params['user'] = config.get('Validations', 'user')
-        self.__params['uid'] = config.getint('Validations', 'uid')
-        self.__params['keyfile'] = config.get('Validations', 'keyfile')
-        self.__params['image'] = config.get('Validations', 'image')
-        self.__params['debug'] = config.getboolean('Validations', 'debug')
-        self.__params['validations'] = config.get('Validations', 'validations')
-        self.__params['repository'] = config.get('Validations', 'repository')
-        self.__params['branch'] = config.get('Validations', 'branch')
-        self.__params['container'] = config.get('Validations', 'container')
-        self.__params['inventory'] = config.get('Validations', 'inventory')
-        self.__params['build'] = self.__args['build']
-        self.__params['run'] = self.__args['run']
-        self.__params['list'] = self.__args['list']
-        self.__params['group'] = self.__args['group']
-        self.__params['host'] = self.__args['host']
-        self.__params['inventory_ping'] = self.__args['inventory_ping']
-        self.__params['log_path'] = self.__args['log_path']
-        self.__params['log_path_host'] = self.__args['log_path_host']
-        self.__params['ansible_callback'] = self.__args['ansible_callback']
-
-        validations = config.get('Validations', 'volumes').split(',')
-        self.__params['volumes'] = validations
-
-        extra_pkgs = config.get('Validations', 'extra_pkgs')
-        self.__params['extra_pkgs'] = ' '.join(extra_pkgs.split(','))
-
-    def __generate_containerfile(self):
-        self.__print('Generating "Containerfile"')
-        # Set inventory to default path if it is not set.
-        if self.__params['inventory'] == '':
-            self.__params['inventory'] = DEFAULT_INVENTORY
+    def _generate_containerfile(self):
+        self._print('Generating "Containerfile"')
+        clone_user_repo, install_user_repo, entrypoint = "", "", ""
+        if self.repository:
+            clone_user_repo = ("RUN git clone {} -b {} /root/user_repo").format(self.repository, self.branch)
+            install_user_repo = ("RUN cd /root/user_repo && \\"
+                                 "python3 -m pip install .")
+        if self.interactive:
+            entrypoint = "ENTRYPOINT /usr/local/bin/validation"
+        param = {'image': self.image, 'extra_pkgs': self.extra_pkgs,
+                 'clone_user_repo': clone_user_repo,
+                 'install_user_repo': install_user_repo,
+                 'entrypoint': entrypoint}
         with open('./Containerfile', 'w+') as containerfile:
-            containerfile.write(CONTAINERFILE_TMPL % self.__params)
+            containerfile.write(CONTAINERFILE_TMPL % param)
 
     def _check_container_cli(self, cli):
         if not spawn.find_executable(cli):
             raise RuntimeError(
                 "The container cli {} doesn't exist on this host".format(cli))
 
-    def __build_container(self):
-        self.__print('Building image')
-        self._check_container_cli(self.__params['container'])
+    def _build_container(self):
+        self._print('Building image')
+        self._check_container_cli(self.container)
         cmd = [
-                self.__params['container'],
+                self.container,
                 'build',
                 '-t',
-                'localhost/validations',
+                'localhost/validation',
                 '-f',
                 'Containerfile',
                 '.'
@@ -178,186 +198,60 @@ class RunValidations:
         except subprocess.CalledProcessError:
             print('An error occurred!')
             sys.exit(1)
+
+    def _build_run_cmd(self):
+        self._check_container_cli(self.container)
+        if self.interactive:
+            container_args = '-ti'
         else:
-            self.start()
-
-    def build(self):
-        self.__generate_containerfile()
-        self.__build_container()
-        pass
-
-    def __build_start_cmd(self):
-        self._check_container_cli(self.__params['container'])
-        cmd = [
-                self.__params['container'],
-                'run', '--rm',
-                ]
+            container_args = '--rm'
+        cmd = [self.container, 'run', container_args]
+        # Keyfile
+        cmd.append('-v%s:/root/containerhost_private_key:z' %
+                   self.keyfile)
+        #cmd.append('--network="host"')
+        # log path
+        if os.path.isdir(os.path.abspath(self.validation_log_dir)):
+            cmd.append('-v%s:/root/validations:z' %
+                       self.validation_log_dir)
         # Volumes
-        if len(self.__params['volumes']) > 1:
-            self.__print('Adding volumes:')
-            for volume in self.__params['volumes']:
-                self.__print(volume)
+        if self.volumes:
+            self._print('Adding volumes:')
+            for volume in self.volumes:
+                self._print(volume)
                 cmd.extend(['-v', volume])
 
-        # Keyfile
-        cmd.append('-v%s:/root/containerhost_private_key:ro' %
-                   self.__params['keyfile'])
-
-        # Repository
-        if os.path.isdir(os.path.abspath(self.__params.get('repository'))):
-            cmd.append('-v%s:/root/validation-repository:z' %
-                       self.__params['repository'])
-        else:
-            cmd.append('--env=VALIDATION_REPOSITORY=%s' %
-                       self.__params['repository'])
-        cmd.append('--env=REPO_BRANCH=%s' % self.__params['branch'])
-
         # Inventory
-        # If the inventory option has been set at container start
-        # mount it into the container.
-        if os.path.isfile(os.path.abspath(self.__params.get('inventory'))):
-            cmd.append('-v%s:%s:z' % (
-                os.path.abspath(self.__params['inventory']),
-                CONTAINER_INVENTORY_PATH))
+        if self.inventory:
+            if os.path.isfile(os.path.abspath(self.inventory)):
+                cmd.append('-v%s:%s:z' % (
+                    os.path.abspath(self.inventory),
+                    CONTAINER_INVENTORY_PATH))
 
-        # Logging
-        log_path = self.__params['log_path']
-        log_path_host = self.__params['log_path_host']
-        # Make sure the file exists
-        if not os.path.isfile(log_path_host):
-            directory = os.path.dirname(os.path.abspath(log_path_host))
-            if not os.path.isdir(directory):
-                os.makedirs(directory)
-            open(log_path_host, 'a')
-        cmd.append('-v%s:%s:z' % (os.path.abspath(log_path_host), log_path))
-
-        # Callback
-        if self.__params['ansible_callback']:
-            cmd.append('--env=ANSIBLE_STDOUT_CALLBACK=%s' %
-                       self.__params['ansible_callback'])
-            # Force color
-            cmd.append('--env=ANSIBLE_FORCE_COLOR=true')
-
-        # Debug
-        if self.__params['debug']:
-            cmd.append('--env=ANSIBLE_VERBOSITY=4')
-
-        # Action to run
-        cmd.append('--env=ACTION=%s' % self.__params.get('action'))
-
-        # Set group if there ist one
-        cmd.append('--env=GROUP=%s' % self.__params.get('group', ''))
-
-        # Set host if there ist one
-        cmd.append('--env=HOST=%s' % self.__params.get('host', ''))
-
-        # Validation playbooks
-        if self.__params['validations'] != '':
-            cmd.append('--env=VALIDATIONS=%s' % self.__params['validations'])
-
-        cmd.append('localhost/validations')
-        self.__print(' '.join(cmd))
+        # Container name
+        cmd.append('localhost/validation')
+        # Validation binary
+        cmd.append('validation')
+        if not self.interactive and self.cmd:
+            cmd.extend(self.cmd)
+        import pdb; pdb.set_trace()
         return cmd
 
-    def start(self):
-        self.__print('Starting container')
-        cmd = self.__build_start_cmd()
-        self.__print('Running %s' % ' '.join(cmd))
+    def build(self):
+        self._generate_containerfile()
+        self._build_container()
+
+    def run(self):
+        self._print('Starting container')
+        cmd = self._build_run_cmd()
+        self._print('Running %s' % ' '.join(cmd))
         try:
             subprocess.check_call(cmd)
         except subprocess.CalledProcessError:
             print('An error occurred!')
             sys.exit(2)
 
-
 if __name__ == "__main__":
-
-    user_entry = pwd.getpwuid(int(os.environ.get('SUDO_UID', os.getuid())))
-    default_user = user_entry.pw_name
-    default_uid = user_entry.pw_uid
-    default_keyfile = os.path.join('/home', default_user, '.ssh/id_rsa')
-    default_repo = 'https://opendev.org/openstack/tripleo-validations'
-    default_branch = 'master'
-
-    parser = argparse.ArgumentParser(
-            description=('Run validations. It can either use in-line '
-                         'parameter, or use an existing configuration '
-                         'file located in '
-                         'CURRENT_DIR/.config/run_validations.conf. '
-                         'The configuration file has priority.'),
-            epilog=('Example: ./validation.py --extra-pkgs whois '
-                    '--run --debug '
-                    '-v /tmp/foo:/tmp/bar:z')
-            )
-    parser.add_argument('--config', '-C', type=str, help='Use config file')
-    parser.add_argument('--user', '-u', type=str, default=default_user,
-                        help=('Set user in container. '
-                              'Defaults to %s' % default_user))
-    parser.add_argument('--uid', '-U', type=int, default=default_uid,
-                        help=('User UID in container. '
-                              'Defaults to %s' % default_uid))
-    parser.add_argument('--keyfile', '-K', type=str, default=default_keyfile,
-                        help=('Keyfile path to bind-mount in container. '
-                              'Defaults to %s' % default_keyfile))
-    parser.add_argument('--build', '-B', action='store_true',
-                        help='Build container even if it exists. '
-                             'Defaults to False')
-    parser.add_argument('--run', '-R', action='store_true',
-                        help='Run validations. Defaults to False')
-    parser.add_argument('--image', '-i', type=str, default='fedora:30',
-                        help='Container base image. Defaults to fedora:30')
-    parser.add_argument('--extra-pkgs', type=str, default='',
-                        help=('Extra packages to install in the container. '
-                              'Comma or space separated list. '
-                              'Defaults to empty string.'))
-    parser.add_argument('--validations', '-V', type=str, default='',
-                        help=('Validations to run. Defaults to an empty string'
-                              ' in which case a ping test will be run.'))
-    parser.add_argument('--repository', '-r', type=str, default=default_repo,
-                        help=('Remote repository to clone validations role '
-                              'from. Defaults to %s' % default_repo))
-    parser.add_argument('--branch', '-b', type=str, default=default_branch,
-                        help=('Remote repository branch to clone validations '
-                              'from. Defaults to %s' % default_branch))
-    parser.add_argument('--create-config', type=str,
-                        help='Create the configuration file.')
-    parser.add_argument('--container', '-c', type=str, default='podman',
-                        choices=['docker', 'podman'],
-                        help='Container engine. Defaults to podman.')
-    parser.add_argument('--volumes', '-v', type=str, action='append',
-                        default=[],
-                        help=('Volumes you want to add to the container. '
-                              'Can be provided multiple times. '
-                              'Defaults to []'))
-    parser.add_argument('--inventory', '-I', type=str,
-                        default='',
-                        help=('Provide inventory for validations. Can be a '
-                              'path, or a string. Please refer to Ansible '
-                              'inventory documentation. '
-                              'Defaults to an empty string.'))
-    parser.add_argument('--debug', '-D', action='store_true',
-                        help='Toggle debug mode. Defaults to False.')
-    parser.add_argument('--list', '-L', action='store_true',
-                        help='List all validations.')
-    parser.add_argument('--inventory-ping', action='store_true',
-                        help='Run a ping test on the inventory.')
-    parser.add_argument('--group', type=str, default='',
-                        help='Run validations in group.')
-    parser.add_argument('--host', type=str, default='',
-                        help='Run validations in host.')
-    parser.add_argument('--log-path', type=str,
-                        default='/root/validations.log',
-                        help='Local log path for validations output.')
-    parser.add_argument('--log-path-host', type=str, default='validations.log',
-                        help='Local log path for validations output on the '
-                             'host.')
-    parser.add_argument('--ansible-callback', type=str,
-                        default=None,
-                        help='Define ansible stdout callback. Validations has '
-                             'its own stdout callback named: '
-                             'validation_output. The standard Ansible one is: '
-                             'default')
-
-    args = parser.parse_args()
-
-    val = RunValidations(vars(args))
+    validation = Validation()
+    args = validation.parser(validation)
+    validation.take_action(args)
